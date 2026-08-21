@@ -1,0 +1,387 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SPOT THE LIE — Daily Diff</title>
+<style>
+  :root{
+    --bg:#15171e; --panel:#1d202a; --ink:#e8ebf2; --dim:#8a93a6;
+    --accent:#e0a83f; --good:#57c98a; --bad:#e06a6a;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--ink);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+       display:flex;flex-direction:column;align-items:center;min-height:100vh;padding:14px}
+  header{text-align:center;margin-bottom:10px}
+  h1{font-size:26px;letter-spacing:4px;font-weight:800}
+  h1 .daily{color:var(--accent);border:2px solid var(--accent);padding:1px 8px;margin-left:10px;
+       font-size:15px;letter-spacing:3px;vertical-align:middle;border-radius:3px}
+  .sub{color:var(--dim);font-size:11px;letter-spacing:2px;margin-top:4px;text-transform:uppercase}
+  #stageWrap{position:relative;border:1px solid #2a2f3d;border-radius:8px;overflow:hidden;background:#181b23}
+  #stageWrap.shake{animation:shk .3s}
+  @keyframes shk{0%,100%{transform:translateX(0)}20%{transform:translateX(-9px)}40%{transform:translateX(8px)}
+                 60%{transform:translateX(-6px)}80%{transform:translateX(4px)}}
+  canvas{display:block;width:min(96vw,1160px);height:auto;cursor:crosshair}
+  #banner{position:absolute;left:50%;top:42%;transform:translate(-50%,-50%);
+     background:#10131aee;border:2px solid var(--good);border-radius:8px;padding:14px 26px;
+     font-size:19px;letter-spacing:2px;display:none;text-align:center;z-index:5}
+  #banner .small{display:block;font-size:12px;color:var(--dim);margin-top:6px;letter-spacing:1px}
+  #hud{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-top:12px;align-items:center}
+  .chip{background:var(--panel);border:1px solid #2a2f3d;border-radius:6px;padding:7px 13px;
+        font-size:13px;letter-spacing:1px;white-space:nowrap}
+  .chip b{color:var(--accent)}
+  #seedChip{border-color:var(--accent)}
+  #multBarWrap{width:150px;height:10px;background:#10131a;border:1px solid #2a2f3d;border-radius:5px;overflow:hidden}
+  #multBar{height:100%;width:100%;background:var(--accent);transition:width .2s linear}
+  #dots{letter-spacing:4px;color:var(--good)}
+  #guardTag{color:var(--good);display:none;font-size:11px}
+  #actions{margin-top:12px;display:flex;gap:10px}
+  button{background:var(--panel);border:1px solid #3a4154;color:var(--ink);
+         font-family:inherit;font-size:13px;letter-spacing:2px;padding:9px 18px;border-radius:6px;cursor:pointer}
+  button:hover{border-color:var(--accent);color:var(--accent)}
+  footer{margin-top:14px;color:var(--dim);font-size:10px;letter-spacing:1px;text-align:center}
+  .flashGood{color:var(--good)!important}.flashBad{color:var(--bad)!important}
+</style>
+</head>
+<body>
+<header>
+  <h1>SPOT THE LIE<span class="daily">DAILY DIFF</span></h1>
+  <div class="sub">procedural scene pair · seeded · new puzzle every seed</div>
+</header>
+
+<div id="stageWrap">
+  <canvas id="stage" width="1160" height="520"></canvas>
+  <div id="banner"></div>
+</div>
+
+<div id="hud">
+  <div class="chip" id="seedChip">SEED <b id="seedVal">--------</b></div>
+  <div class="chip">SCORE <b id="scoreVal">0</b></div>
+  <div class="chip">MULT <b id="multVal">3.00×</b></div>
+  <div id="multBarWrap"><div id="multBar"></div></div>
+  <div class="chip">STREAK <b id="streakVal">0</b> <span id="guardTag">CHAIN GUARD</span></div>
+  <div class="chip" id="dots">○○○○○</div>
+  <div class="chip" id="clock">0.0s</div>
+</div>
+
+<div id="actions">
+  <button id="btnNew">NEW SEED</button>
+  <button id="btnSame">REPLAY THIS SEED</button>
+</div>
+
+<footer>greybox feeler (throwaway) · generator = answer key · diff manifest printed to browser console · no hard-fail timer anywhere</footer>
+
+<script>
+"use strict";
+/* ================= SPOT THE LIE — W1 feeler =================
+   Seeded scene-graph rendered twice; mutations from
+   {add, remove, flip, swap-position, resize}; N=5 diffs;
+   salience floor enforced by generator (reject + regenerate);
+   recolor is NOT implemented as a mutation class at all
+   (accessibility pin satisfied by construction).
+   Timer drains score MULTIPLIER only — no hard-fail clock.  */
+
+/* ---------- seeded RNG ---------- */
+function xmur3(str){let h=1779033703^str.length;for(let i=0;i<str.length;i++){
+  h=Math.imul(h^str.charCodeAt(i),3432918353);h=(h<<13)|(h>>>19);}
+  return function(){h=Math.imul(h^(h>>>16),2246822507);h=Math.imul(h^(h>>>13),3266489909);
+  return (h^=h>>>16)>>>0;};}
+function mulberry32(a){return function(){a|=0;a=(a+0x6D2B79F5)|0;let t=Math.imul(a^(a>>>15),1|a);
+  t=(t+Math.imul(t^(t>>>7),61|t))^t;return ((t^(t>>>14))>>>0)/4294967296;};}
+function makeRng(seedStr){const h=xmur3(String(seedStr));return mulberry32(h());}
+
+/* ---------- constants ---------- */
+const W=1160,H=520,HALF_W=550,GAP=60,MARGIN=22;
+const OX_L=0, OX_R=HALF_W+GAP;
+const NUM_DIFFS=5;
+const FLOOR_PX=26;          // salience floor (edge-travel px)
+const DENSE_RADIUS=88;      // "local decoy density" neighbourhood
+const DENSE_BOOST=1.35;     // floor multiplier in dense neighbourhoods
+const MIN_CLEAR=66;         // min px between diff epicenters (anti-cluster)
+const SHAPES_N=14;
+const PALETTE=["#8a93a6","#9aa3b5","#778093","#a8b0c2","#6d7689"];
+const HIT_MIN=34;
+
+/* ---------- helpers ---------- */
+const dist=(ax,ay,bx,by)=>Math.hypot(ax-bx,ay-by);
+function bbox(s){ // canonical-space bounding box [x1,y1,x2,y2]
+  switch(s.kind){
+    case "circle":return [s.x-s.r,s.y-s.r,s.x+s.r,s.y+s.r];
+    case "tri":   return [s.x-s.w/2,s.y-s.h/2,s.x+s.w/2,s.y+s.h/2];
+    default:      return [s.x-s.w/2,s.y-s.h/2,s.x+s.w/2,s.y+s.h/2];
+  }
+}
+const bGap=(a,b)=>{const A=bbox(a),B=bbox(b);
+  return Math.max(A[0]-B[2],B[0]-A[2],A[1]-B[3],B[1]-A[3]);};
+const maxDim=s=>s.kind==="circle"?s.r*2:Math.max(s.w,s.h);
+
+/* ---------- scene generation ---------- */
+function genScene(rng){
+  const shapes=[];let guard=0;
+  while(shapes.length<SHAPES_N&&guard++<900){
+    const kindRoll=rng();
+    let s;
+    const cx=MARGIN+rng()*(HALF_W-2*MARGIN), cy=MARGIN+rng()*(H-2*MARGIN);
+    if(kindRoll<0.4)      s={kind:"rect",x:cx,y:cy,w:36+rng()*48,h:30+rng()*40};
+    else if(kindRoll<0.75)s={kind:"circle",x:cx,y:cy,r:16+rng()*18};
+    else                  s={kind:"tri",x:cx,y:cy,w:46+rng()*40,h:38+rng()*34,dir:rng()<0.5?1:-1};
+    s.fill=PALETTE[(shapes.length)%PALETTE.length]; s.id=shapes.length;
+    if(shapes.every(o=>bGap(s,o)>10)) shapes.push(s);
+  }
+  return shapes;
+}
+
+/* ---------- mutation proposals (structural classes only) ---------- */
+function propose(cls,rng,scene,epicenters){
+  const live=scene.filter(s=>!s.dead);
+  const tryPos=(pad)=>{for(let i=0;i<40;i++){
+    const x=MARGIN+pad+rng()*(HALF_W-2*MARGIN-2*pad), y=MARGIN+pad+rng()*(H-2*MARGIN-2*pad);
+    return {x,y};}};
+
+  if(cls==="add"){
+    const p=tryPos(40); if(!p)return null;
+    const kindRoll=rng(); let s;
+    if(kindRoll<0.4)      s={kind:"rect",x:p.x,y:p.y,w:36+rng()*48,h:30+rng()*40};
+    else if(kindRoll<0.75)s={kind:"circle",x:p.x,y:p.y,r:16+rng()*18};
+    else                  s={kind:"tri",x:p.x,y:p.y,w:46+rng()*40,h:38+rng()*34,dir:rng()<0.5?1:-1};
+    s.fill=PALETTE[Math.floor(rng()*PALETTE.length)];
+    if(!live.every(o=>bGap(s,o)>12))return null;
+    if(!epicenters.every(e=>dist(s.x,s.y,e.x,e.y)>=MIN_CLEAR))return null;
+    const c=[{x:s.x,y:s.y}];
+    return {cls,target:s,epicenters:c,travel:2*maxDim(s)};
+  }
+  if(cls==="remove"){
+    const cand=live.filter(s=>epicenters.every(e=>dist(s.x,s.y,e.x,e.y)>=MIN_CLEAR));
+    if(!cand.length)return null;
+    const t=cand[Math.floor(rng()*cand.length)];
+    return {cls,target:t,epicenters:[{x:t.x,y:t.y}],travel:2*maxDim(t)};
+  }
+  if(cls==="flip"){ // asymmetric shapes only (tri); rect/circle flips are no-ops
+    const cand=live.filter(s=>s.kind==="tri"&&epicenters.every(e=>dist(s.x,s.y,e.x,e.y)>=MIN_CLEAR));
+    if(!cand.length)return null;
+    const t=cand[Math.floor(rng()*cand.length)];
+    return {cls,target:t,epicenters:[{x:t.x,y:t.y}],travel:t.w*0.6};
+  }
+  if(cls==="swap-position"){
+    const pairs=[];
+    for(let i=0;i<live.length;i++)for(let j=i+1;j<live.length;j++){
+      const a=live[i],b=live[j],d=dist(a.x,a.y,b.x,b.y);
+      if(d>=FLOOR_PX+18&&d<=HALF_W*0.62) pairs.push([a,b,d]);
+    }
+    const ok=pairs.filter(([a,b])=>[a,b].every(s=>epicenters.every(e=>dist(s.x,s.y,e.x,e.y)>=MIN_CLEAR)))
+                  .filter(([a,b])=>dist(a.x,a.y,b.x,b.y)>=MIN_CLEAR);
+    if(!ok.length)return null;
+    const [a,b,d]=ok[Math.floor(rng()*ok.length)];
+    return {cls,target:a,target2:b,epicenters:[{x:a.x,y:a.y},{x:b.x,y:b.y}],travel:d};
+  }
+  if(cls==="resize"){
+    const cand=live.filter(s=>epicenters.every(e=>dist(s.x,s.y,e.x,e.y)>=MIN_CLEAR));
+    if(!cand.length)return null;
+    const t=cand[Math.floor(rng()*cand.length)];
+    const grow=rng()<0.55, f=grow?(1.32+rng()*0.18):(1/(1.32+rng()*0.18));
+    const B=bbox(t);
+    const nw=(t.kind==="circle"?t.r*2*f:(t.kind==="tri"?t.w*f:t.w*f));
+    const nh=(t.kind==="circle"?t.r*2*f:(t.kind==="tri"?t.h*f:t.h*f));
+    const nb=[t.x-nw/2,t.y-nh/2,t.x+nw/2,t.y+nh/2];
+    if(nb[0]<MARGIN||nb[1]<MARGIN||nb[2]>HALF_W-MARGIN||nb[3]>H-MARGIN)return null;
+    return {cls,target:t,factor:f,grow,
+            epicenters:[{x:t.x,y:t.y}],travel:Math.abs(maxDim(t)*f-maxDim(t))*1.6};
+  }
+  return null;
+}
+
+/* ---------- generator WITH SALIENCE FLOOR (C3) ----------
+   Returns {scene, muts, log} — muts = answer key.            */
+function generate(seedStr){
+  const rng=makeRng(seedStr);
+  for(let attempt=0;attempt<10;attempt++){
+    const scene=genScene(rng);
+    const muts=[];const epicenters=[];const log=[];
+    let ok=true;
+    for(let slot=0;slot<NUM_DIFFS&&ok;slot++){
+      let placed=null;
+      for(let t=0;t<60&&!placed;t++){
+        const cls=["add","remove","flip","swap-position","resize"][Math.floor(rng()*5)];
+        const p=propose(cls,rng,scene,epicenters);
+        if(!p)continue;
+        // salience floor relative to LOCAL DECOY DENSITY (C3)
+        const e=p.epicenters[0];
+        const neighbours=scene.filter(s=>!s.dead&&s!==p.target&&s!==p.target2)
+          .filter(s=>dist(s.x,s.y,e.x,e.y)<DENSE_RADIUS).length;
+        const effFloor=FLOOR_PX*(neighbours>3?DENSE_BOOST:1);
+        if(p.travel<effFloor){log.push({slot,cls,rejected:"below-floor",travel:+p.travel.toFixed(1),effFloor:+effFloor.toFixed(1)});continue;}
+        placed=p;
+        placed.effFloor=+effFloor.toFixed(1);placed.neighbours=neighbours;
+        log.push({slot,cls,accepted:true,travel:+p.travel.toFixed(1),effFloor:+effFloor.toFixed(1)});
+      }
+      if(!placed){ok=false;}else{muts.push(placed);epicenters.push(...placed.epicenters);}
+    }
+    if(ok&&muts.length===NUM_DIFFS){
+      return {rng,scene,muts,log};
+    }
+  }
+  throw new Error("generator exhausted retries for seed "+seedStr);
+}
+
+/* ---------- render ---------- */
+function drawShape(ctx,s,mutated,muts){
+  let sh={...s};
+  if(mutated)for(const m of muts){
+    if(m.cls==="remove"&&m.target.id===s.id)return;           // absent on right
+    if(m.cls==="resize"&&m.target.id===s.id){
+      if(sh.kind==="circle")sh.r*=m.factor;else{sh.w*=m.factor;sh.h*=m.factor;}
+    }
+    if(m.cls==="flip"&&m.target.id===s.id)sh.dir=-sh.dir;
+  }
+  ctx.fillStyle=sh.fill;ctx.strokeStyle="#11141b";ctx.lineWidth=1.5;
+  ctx.beginPath();
+  if(sh.kind==="circle")ctx.arc(sh.x,sh.y,sh.r,0,Math.PI*2);
+  else if(sh.kind==="tri"){ // asymmetric → flip is visible
+    const bx=sh.w/2*sh.dir;
+    ctx.moveTo(sh.x-bx,sh.y-sh.h/2);ctx.lineTo(sh.x-bx,sh.y+sh.h/2);ctx.lineTo(sh.x+bx,sh.y);ctx.closePath();
+  } else ctx.rect(sh.x-sh.w/2,sh.y-sh.h/2,sh.w,sh.h);
+  ctx.fill();ctx.stroke();
+}
+function render(ctx,state,rings,now){
+  ctx.clearRect(0,0,W,H);
+  // halves + divider
+  ctx.fillStyle="#20242f";
+  ctx.fillRect(OX_L+8,10,HALF_W-16,H-20);
+  ctx.fillRect(OX_R+8,10,HALF_W-16,H-20);
+  ctx.fillStyle="#2c3342";ctx.fillRect(HALF_W+GAP/2-2,0,4,H);
+  ctx.fillStyle="#39404f";ctx.font="700 12px ui-monospace,monospace";ctx.textAlign="left";
+  ctx.fillText("ORIGINAL",OX_L+22,30);ctx.fillText("THE LIE",OX_R+22,30);
+  for(const half of [false,true]){
+    ctx.save();
+    if(half)ctx.translate(OX_R,0);
+    const muts=half?state.muts:null;
+    for(const s of state.scene){
+      // swap-position: on right half the two targets trade places
+      let sd={...s};
+      if(half)for(const m of muts)if(m.cls==="swap-position"){
+        if(m.target.id===s.id){sd={...s,x:m.target2.x,y:m.target2.y};}
+        if(m.target2.id===s.id){sd={...s,x:m.target.x,y:m.target.y};}
+      }
+      drawShape(ctx,sd,half,muts);
+    }
+    if(half)for(const m of muts)if(m.cls==="add")
+      drawShape(ctx,{...m.target,id:"add"+state.scene.length,fill:m.target.fill},true,muts);
+    ctx.restore();
+  }
+  // hit rings
+  for(const r of rings){
+    const age=(now-r.t0)/650;if(age>1)continue;
+    for(const ox of [OX_L,OX_R]){
+      ctx.beginPath();
+      ctx.arc(ox+r.x,r.y,10+age*34,0,Math.PI*2);
+      ctx.strokeStyle=`rgba(87,201,138,${1-age})`;ctx.lineWidth=3.5;ctx.stroke();
+    }
+  }
+}
+
+/* ---------- game shell ---------- */
+const cv=document.getElementById("stage"),ctx=cv.getContext("2d");
+const wrap=document.getElementById("stageWrap");
+const $=id=>document.getElementById(id);
+
+function randomSeed(){
+  const abc="ABCDEFGHJKMNPQRSTUVWXYZ23456789";let s="";
+  for(let i=0;i<8;i++)s+=abc[Math.floor(Math.random()*abc.length)];
+  return s.slice(0,4)+"-"+s.slice(4);
+}
+let state=null,startT=0,wrongTaps=0,streak=0,guardArmed=false,score=0,found=0,cleared=false;
+let rings=[],lastFrame=performance.now();
+
+function newGame(seed){
+  const t0=performance.now();
+  state=generate(seed);
+  startT=performance.now();wrongTaps=0;streak=0;guardArmed=false;score=0;found=0;cleared=false;rings=[];multPenalty=1;
+  $("seedVal").textContent=seed;$("banner").style.display="none";$("guardTag").style.display="none";
+  /* ANSWER KEY — diff manifest to console (spec mandate) */
+  console.log("%c[SPOT THE LIE] seed="+seed+" · N="+state.muts.length+" diffs · gen "+
+    (performance.now()-t0).toFixed(1)+"ms","font-weight:bold");
+  console.table(state.muts.map((m,i)=>({diff:i+1,class:m.cls,targetId:m.target.id,
+    target2:m.target2?m.target2.id:"-",epicenter:m.epicenters.map(e=>`(${e.x|0},${e.y|0})`).join(" "),
+    travelPx:m.travel,effFloorPx:m.effFloor,decoysIn88px:m.neighbours})));
+  console.table(state.log.filter(l=>l.rejected));
+  window.SPOT_DEBUG={ready:true,seed,manifest:state.muts,state:()=>state,
+    metrics:()=>({seed,timeS:+((performance.now()-startT)/1000).toFixed(1),
+      wrongTaps,score,found,total:NUM_DIFFS,cleared}),
+    clientPoint(i){ // viewport coords of diff i's FIRST epicenter (left half) for real-mouse QA
+      const r=cv.getBoundingClientRect(),k=r.width/W,e=state.muts[i].epicenters[0];
+      return {x:r.left+(OX_L+e.x)*k,y:r.top+e.y*k};}
+  };
+}
+function hitRadius(m){
+  const r=Math.max(HIT_MIN,maxDim(m.target)*0.55);
+  return m.target2?Math.max(r,maxDim(m.target2)*0.55):r;
+}
+cv.addEventListener("pointerdown",ev=>{
+  if(!state||cleared)return;
+  const rc=cv.getBoundingClientRect(),k=W/rc.width;
+  const x=(ev.clientX-rc.left)*k, y=(ev.clientY-rc.top)*k;
+  const canon=x<OX_R? x-OX_L : x-OX_R;             // either half → canonical coords
+  for(let i=0;i<state.muts.length;i++){
+    if(state.muts[i].found)continue;
+    for(const e of state.muts[i].epicenters){
+      if(dist(canon,y,e.x,e.y)<=hitRadius(state.muts[i])){
+        state.muts[i].found=true;rings.push({x:e.x,y:e.y,t0:performance.now()});
+        streak++;found++;const m=currentMult();
+        const pts=Math.round(100*m*(1+0.1*(streak-1)));score+=pts;
+        blip(880,.06);flash($("scoreVal"),"flashGood");$("dots").textContent="●".repeat(found)+"○".repeat(NUM_DIFFS-found);
+        if(found===NUM_DIFFS)finish();
+        return;
+      }
+    }
+  }
+  wrongTap();
+});
+function wrongTap(){
+  wrongTaps++;streakPrev=streak;
+  if(streak>=2&&!guardArmed){guardArmed=true;$("guardTag").style.display="inline";
+    flash($("streakVal"),"flashBad");}
+  else{streak=0;guardArmed=false;$("guardTag").style.display="none";}
+  multPenalty=0.5; // wrong tap costs the score MULTIPLIER only — never time, never a fail
+  wrap.classList.remove("shake");void wrap.offsetWidth;wrap.classList.add("shake");
+  blip(140,.08);flash($("multVal"),"flashBad");
+}
+let streakPrev=0,multPenalty=1;
+function currentMult(){return Math.max(1,3-(performance.now()-startT)/45000)*multPenalty;}
+function finish(){
+  cleared=true;
+  const secs=(performance.now()-startT)/1000;
+  const msg=$("banner");msg.style.display="block";
+  msg.innerHTML=`SCENE CLEARED — ${secs.toFixed(1)}s<br>
+    <span class="small">score ${score} · wrong taps ${wrongTaps} · seed ${$("seedVal").textContent} · press NEW SEED</span>`;
+  console.log(`[SPOT THE LIE] CLEARED seed=${$("seedVal").textContent} time=${secs.toFixed(1)}s score=${score} wrongTaps=${wrongTaps}`);
+  blip(1320,.12);
+}
+function flash(el,cls){el.classList.remove(cls);void el.offsetWidth;el.classList.add(cls);
+  setTimeout(()=>el.classList.remove(cls),400);}
+
+/* debug tone (WebAudio, created on gesture) */
+let AC=null;function blip(f,d){try{AC=AC||new (window.AudioContext||window.webkitAudioContext)();
+  const o=AC.createOscillator(),g=AC.createGain();o.frequency.value=f;o.type="sine";
+  g.gain.setValueAtTime(.08,AC.currentTime);g.gain.exponentialRampToValueAtTime(.0001,AC.currentTime+d);
+  o.connect(g).connect(AC.destination);o.start();o.stop(AC.currentTime+d);}catch(e){}}
+
+/* HUD tick — multiplier decays with TIME but never ends anything (C2 scoring-not-survival) */
+setInterval(()=>{
+  const m=currentMult();
+  $("multVal").textContent=m.toFixed(2)+"×";
+  $("multBar").style.width=((m-1)/2*100)+"%";
+  $("scoreVal").textContent=score;
+  $("streakVal").textContent=streak;
+  $("clock").textContent=((performance.now()-startT)/1000).toFixed(1)+"s";
+},120);
+
+(function loop(now){render(ctx,state||{scene:[],muts:[]},rings,now);requestAnimationFrame(loop);})(performance.now());
+
+/* boot: ?seed= honoured (shareable daily-style runs) */
+const qs=new URLSearchParams(location.search).get("seed");
+newGame(qs?String(qs).toUpperCase():randomSeed());
+$("btnNew").onclick=()=>newGame(randomSeed());
+$("btnSame").onclick=()=>newGame($("seedVal").textContent);
+</script>
+</body>
+</html>
