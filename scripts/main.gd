@@ -89,6 +89,9 @@ func _drift_seed() -> String:
 	return "DRIFT-%s-%d" % [drift_lineage, drift_board]
 
 
+var _dbg: Dictionary = {}
+
+
 func _new_board(seed_str: String) -> void:
 	board_seed = seed_str
 	state = Generator.new().generate(seed_str)
@@ -113,16 +116,84 @@ func _new_board(seed_str: String) -> void:
 		var m: Dictionary = state.muts[i]
 		print("  diff %d: %s @ (%d,%d) travel=%.1f floor=%.1f" % [i + 1, m.cls,
 			int(m.epicenters[0].x), int(m.epicenters[0].y), m.travel, m.eff_floor])
-	var dbg := {
-		"ready": true, "seed": seed_str, "mode": _mode_name(),
+	_dbg = {
+		"ready": true, "seed": board_seed, "mode": _mode_name(),
 		"manifest": state.muts,
 	}
+	_push_metrics()
+	_push_tapstats()
+
+
+## QA bridge: RE-PUSH the metrics closure whenever state changes. A one-shot
+## install freezes values at _new_board time and QA reads stale zeros
+## (this exact bug masked a working game during the rule-16 playthrough).
+func _push_metrics() -> void:
 	if OS.has_feature("web"):
 		JavaScriptBridge.eval(
-			("window.SPOT_DEBUG = %s;" % [JSON.stringify(dbg)])
+			"window.SPOT_DEBUG = %s;" % [JSON.stringify(_dbg)]
 			+ ("window.SPOT_METRICS = function(){ return %s; };"
 				% [JSON.stringify(_metrics())])
 		)
+
+
+## QA diagnostics: counts every InputEvent the engine sees and where mouse
+## presses land after transform. Pushed to window.SPOT_TAPSTATS() so the
+## CDP playtest can see whether clicks reach Godot at all.
+var tap_events := 0
+var tap_motion := 0
+var tap_press := 0
+var tap_release := 0
+var tap_touch := 0
+var last_tap_local := Vector2.ZERO
+var last_tap_canon := Vector2.ZERO
+var last_tap_guard := ""
+
+
+func _tap_stats() -> Dictionary:
+	return {
+		"events": tap_events,
+		"n_motion": tap_motion,
+		"n_press": tap_press,
+		"n_release": tap_release,
+		"n_touch": tap_touch,
+		"last_local": [last_tap_local.x, last_tap_local.y],
+		"last_canon": [last_tap_canon.x, last_tap_canon.y],
+		"last_guard": last_tap_guard,
+	}
+
+
+func _push_tapstats() -> void:
+	if OS.has_feature("web"):
+		JavaScriptBridge.eval("window.SPOT_TAPSTATS = function(){ return %s; };" % [JSON.stringify(_tap_stats())])
+
+
+## Use EVENT positions, never get_local_mouse_position(): the viewport's
+## cached mouse position lags/stales in headless/web environments (QA-proven),
+## while event.position arrives pre-transformed to viewport space.
+func _input(event: InputEvent) -> void:
+	tap_events += 1
+	if event is InputEventMouseMotion:
+		tap_motion += 1
+	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+		if event.pressed:
+			tap_press += 1
+		else:
+			tap_release += 1
+		last_tap_local = event.position
+		if state.has("muts") and not state.muts.is_empty():
+			last_tap_canon = renderer.to_canonical(event.position)
+			last_tap_guard = "press" if event.pressed else "release"
+		if event.pressed:
+			_try_tap(event.position)
+	elif event is InputEventScreenTouch and event.pressed:
+		# some web stacks deliver taps as touch — accept both
+		tap_touch += 1
+		last_tap_local = event.position
+		if state.has("muts") and not state.muts.is_empty():
+			last_tap_canon = renderer.to_canonical(event.position)
+		last_tap_guard = "touch"
+		_try_tap(event.position)
+	_push_tapstats()
 
 
 func _metrics() -> Dictionary:
@@ -157,13 +228,6 @@ func current_mult() -> float:
 var _last_press := Vector2(-9999, -9999)
 
 
-func _input(event: InputEvent) -> void:
-	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-		# prefer the event's own position (get_local_mouse_position can lag
-		# or be stale in headless/web environments)
-		_try_tap(renderer.get_local_mouse_position() if event.position == Vector2.ZERO else event.position)
-
-
 func _try_tap(local: Vector2) -> void:
 	if menu.visible or cleared or state.is_empty():
 		return
@@ -192,6 +256,7 @@ func _on_correct_tap() -> void:
 	_update_dots()
 	if found == NUM_DIFFS:
 		_finish_board()
+	_push_metrics()
 
 
 func _wrong_tap() -> void:
@@ -206,6 +271,7 @@ func _wrong_tap() -> void:
 		guard_tag.visible = false
 		audio.play("error")
 	mult_penalty = 0.5
+	_push_metrics()
 
 
 func _on_reveal() -> void:
@@ -231,6 +297,7 @@ func _finish_board() -> void:
 		next_hint = "\nDRIFT continues — next board incoming…"
 	msg += next_hint
 	_show_banner(msg)
+	_push_metrics()
 	if mode == Mode.DRIFT and drift_board + 1 < DRIFT_BOARDS:
 		drift_board += 1
 		await get_tree().create_timer(2.2).timeout
@@ -265,6 +332,11 @@ func _process(_delta: float) -> void:
 	mult_bar.size.x = (m - 1.0) / (MULT_MAX - 1.0) * 150.0
 	score_label.text = str(score)
 	streak_label.text = str(streak)
+	if OS.has_feature("web") and Time.get_ticks_msec() - _last_push_ms > 1000:
+		_last_push_ms = Time.get_ticks_msec()
+		_push_metrics()
+
+var _last_push_ms := 0
 
 
 func _update_dots() -> void:

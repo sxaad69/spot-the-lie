@@ -1,14 +1,16 @@
 #!/usr/bin/env node
-/* SPOT THE LIE — rule-16 real-browser CDP playtest v4.
+/* SPOT THE LIE — rule-16 real-browser CDP playtest v5.
  * BOARD DIRECTIVE (mid-run): root of the Pages site = the pulse-passed
  * FEELER (master). Full-build deploys go to /v1/ until the board/design
  * pulses the finished build. So this QA targets /v1/.
  *
- * Menu: keyboard (Enter=DAILY, 3=MIRROR, 4=DRIFT) — deterministic.
+ * Menu: keyboard (Enter=DAILY, 3=MIRROR, 4=DRIFT) — deterministic, retried
+ *   until the board actually starts (engine boot timing varies).
  * Gameplay: REAL mouse clicks (Input.dispatchMouseEvent) at manifest coords.
- * Verified on-box: CDP mouse events DO reach the canvas (mousemove/pointerdown/
- * mousedown/mouseup all land); headless probe confirmed tap logic works via
- * Input.parse_input_event + direct _try_tap.
+ * Metrics: window.SPOT_METRICS() is LIVE (game re-pushes after every state
+ *   change + 1s heartbeat) — v4 read a frozen one-shot closure and reported
+ *   false 0/5 clears on a WORKING game.
+ * Diagnostics: window.SPOT_TAPSTATS() exposes engine-side event counters.
  * Usage: node tests/playtest.js [URL]
  */
 const { spawn } = require("child_process");
@@ -125,14 +127,23 @@ async function clearBoard(label) {
 }
 
 async function enterMode(keyName, vk, label) {
-  await key(keyName, vk);
-  const ok = await waitBoard();
+  // retry the key until the board actually starts — engine boot timing
+  // varies (v4 fired once and raced the boot)
+  const t0 = Date.now();
+  while (Date.now() - t0 < 60000) {
+    await key(keyName, vk);
+    await sleep(1200);
+    try {
+      if ((await evaluate(`String(typeof window.SPOT_DEBUG !== 'undefined' && window.SPOT_DEBUG !== null)`)) === "true") break;
+    } catch (e) {}
+  }
+  const ok = (await evaluate(`String(typeof window.SPOT_DEBUG !== 'undefined' && window.SPOT_DEBUG !== null)`)) === "true";
   check(ok, `${label} entered`);
   return ok;
 }
 
 async function main() {
-  console.log(`SMOKE-PLAYTEST v4 — ${URL}`);
+  console.log(`SMOKE-PLAYTEST v5 — ${URL}`);
   const chrom = spawn("/usr/bin/chromium-browser", [
     "--headless=new", `--remote-debugging-port=${PORT}`,
     "--window-size=1280,800", "--no-sandbox", "--disable-gpu",
