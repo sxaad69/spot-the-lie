@@ -106,13 +106,17 @@ func _new_board(seed_str: String) -> void:
 		var m: Dictionary = state.muts[i]
 		print("  diff %d: %s @ (%d,%d) travel=%.1f floor=%.1f" % [i + 1, m.cls,
 			int(m.epicenters[0].x), int(m.epicenters[0].y), m.travel, m.eff_floor])
-	# QA/debug hook for CDP playthrough
+	# QA/debug hook for CDP playthrough: exposed on window via JavaScriptBridge
 	var dbg := {
 		"ready": true, "seed": seed_str, "mode": _mode_name(),
 		"manifest": state.muts,
-		"metrics": func() -> Dictionary: return _metrics(),
 	}
-	Engine.set_meta("spot_debug", dbg)
+	if OS.has_feature("web"):
+		JavaScriptBridge.eval(
+			("window.SPOT_DEBUG = %s;" % [JSON.stringify(dbg)])
+			+ ("window.SPOT_METRICS = function(){ return %s; };"
+				% [JSON.stringify(_metrics())])
+		)
 
 
 func _metrics() -> Dictionary:
