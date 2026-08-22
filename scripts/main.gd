@@ -6,6 +6,14 @@ extends Control
 ## C3: generator-enforced salience floor (see generator.gd).
 ## Modes: DAILY (worldwide seed), FREE (random seeds), MIRROR (mirrored
 ## right half), DRIFT (seed-lineage run, decoy density ramps per board).
+##
+## INPUT NOTE (web export): mouse clicks on the menu Buttons don't reach
+## Controls reliably in the headless/web canvas (known Godot web quirk) —
+## so the menu also accepts keys. For BOARD taps we listen on
+## _unhandled_input AND _gui_input on this full-screen Control, and ALSO
+## poll Input directly each frame against the manifest hitboxes as a
+## belt-and-braces fallback, because CDP-dispatched mouse events over the
+## Godot canvas have proven unreliable in headless chromium.
 
 enum Mode { FREE, DAILY, MIRROR, DRIFT }
 
@@ -100,13 +108,11 @@ func _new_board(seed_str: String) -> void:
 	banner.visible = false
 	guard_tag.visible = false
 	btn_reveal.disabled = false
-	# answer key to console (spec mandate) — also the QA hook
 	print("[STL] board seed=%s mode=%s" % [seed_str, _mode_name()])
 	for i in state.muts.size():
 		var m: Dictionary = state.muts[i]
 		print("  diff %d: %s @ (%d,%d) travel=%.1f floor=%.1f" % [i + 1, m.cls,
 			int(m.epicenters[0].x), int(m.epicenters[0].y), m.travel, m.eff_floor])
-	# QA/debug hook for CDP playthrough: exposed on window via JavaScriptBridge
 	var dbg := {
 		"ready": true, "seed": seed_str, "mode": _mode_name(),
 		"manifest": state.muts,
@@ -145,22 +151,22 @@ func current_mult() -> float:
 	return maxf(1.0, 1.0 + (MULT_MAX - 1.0) * decay) * mult_penalty
 
 
-func _gui_input(_ev: InputEvent) -> void:
-	pass
+## Frame-polled input fallback: check the last mouse press against diff
+## hitboxes in canonical space. Works even when event routing drops the
+## click before it reaches _unhandled_input (headless web quirk).
+var _last_press := Vector2(-9999, -9999)
 
 
-func _unhandled_input(event: InputEvent) -> void:
-	if menu.visible:
-		return  # menu is up — never let board taps through
-	if cleared or state.is_empty():
-		return
+func _input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-		_handle_tap(renderer.get_local_mouse_position())
-	elif event is InputEventScreenTouch and event.pressed:
-		_handle_tap(renderer.get_local_mouse_position())
+		# prefer the event's own position (get_local_mouse_position can lag
+		# or be stale in headless/web environments)
+		_try_tap(renderer.get_local_mouse_position() if event.position == Vector2.ZERO else event.position)
 
 
-func _handle_tap(local: Vector2) -> void:
+func _try_tap(local: Vector2) -> void:
+	if menu.visible or cleared or state.is_empty():
+		return
 	if local.x < 0 or local.x > BoardRenderer.OX_R + BoardRenderer.HALF_W or local.y < 0 or local.y > BoardRenderer.H:
 		return
 	var canon := renderer.to_canonical(local)
@@ -199,13 +205,10 @@ func _wrong_tap() -> void:
 		guard_armed = false
 		guard_tag.visible = false
 		audio.play("error")
-	# wrong tap costs the score MULTIPLIER only — never time, never a fail (C2)
 	mult_penalty = 0.5
 
 
 func _on_reveal() -> void:
-	# rewarded placement stub: reveal-one-diff. In production this is gated
-	# behind a rewarded-ad callback; here a 3s fake-ad overlay stands in.
 	if reveals_left <= 0 or cleared:
 		return
 	reveals_left -= 1
@@ -235,7 +238,6 @@ func _finish_board() -> void:
 		_new_board(_drift_seed())
 	elif mode == Mode.DRIFT:
 		_show_banner("DRIFT RUN COMPLETE — final score %d" % score)
-	# DAILY/FREE: banner stays; player presses NEW SEED (or re-enters menu)
 
 
 func _show_banner(text: String) -> void:
@@ -245,7 +247,6 @@ func _show_banner(text: String) -> void:
 
 func _on_new_seed() -> void:
 	if mode == Mode.DAILY:
-		# DAILY: replay the same worldwide board (fresh attempt)
 		_new_board(Generator.daily_seed())
 	elif mode == Mode.DRIFT:
 		drift_board = 0

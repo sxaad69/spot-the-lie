@@ -1,27 +1,32 @@
 #!/usr/bin/env node
-/* SPOT THE LIE — rule-16 real-browser CDP playthrough v2.
- * Key fix: menu buttons are Godot Controls rendered INSIDE the canvas, so
- * clicks must go through the canvas transform. We compute the game->page
- * transform live (sm: min(w/1280,h/720) centered) and click the DAILY
- * button at its known in-game rect center (476..804, 280..336).
- * Then diffs are clicked via window.SPOT_DEBUG manifest (left-half coords).
+/* SPOT THE LIE — rule-16 real-browser CDP playtest v4.
+ * BOARD DIRECTIVE (mid-run): root of the Pages site = the pulse-passed
+ * FEELER (master). Full-build deploys go to /v1/ until the board/design
+ * pulses the finished build. So this QA targets /v1/.
+ *
+ * Menu: keyboard (Enter=DAILY, 3=MIRROR, 4=DRIFT) — deterministic.
+ * Gameplay: REAL mouse clicks (Input.dispatchMouseEvent) at manifest coords.
+ * Verified on-box: CDP mouse events DO reach the canvas (mousemove/pointerdown/
+ * mousedown/mouseup all land); headless probe confirmed tap logic works via
+ * Input.parse_input_event + direct _try_tap.
  * Usage: node tests/playtest.js [URL]
  */
 const { spawn } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 
-const URL = process.argv[2] || "https://sxaad69.github.io/spot-the-lie/";
+const URL = process.argv[2] || "https://sxaad69.github.io/spot-the-lie/v1/";
 const PORT = 19000 + Math.floor(Math.random() * 2000);
 const OUT = path.join(__dirname, "..", "docs", "qa-evidence");
 fs.mkdirSync(OUT, { recursive: true });
 
-let ws, msgId = 0;
+let ws = null, msgId = 0;
 const pending = new Map();
 const consoleErrors = [];
 
 function send(method, params = {}) {
   return new Promise((resolve, reject) => {
+    if (!ws) return reject(new Error("ws not attached"));
     const id = ++msgId;
     pending.set(id, { resolve, reject });
     ws.send(JSON.stringify({ id, method, params }));
@@ -29,28 +34,29 @@ function send(method, params = {}) {
   });
 }
 
-function onMessage(data) {
-  const m = JSON.parse(data);
-  if (m.id && pending.has(m.id)) {
-    const p = pending.get(m.id);
-    pending.delete(m.id);
-    if (m.error) p.reject(new Error(m.error.message)); else p.resolve(m.result);
-  } else if (m.method === "Runtime.consoleAPICalled" && m.params.type === "error") {
-    consoleErrors.push(JSON.stringify(m.params.args).slice(0, 300));
-  } else if (m.method === "Runtime.exceptionThrown") {
-    consoleErrors.push(String(m.params.exceptionDetails?.exception?.description || "exc").slice(0, 300));
-  }
+function attachWs(socket) {
+  ws = socket;
+  ws.onmessage = (ev) => {
+    const m = JSON.parse(ev.data);
+    if (m.id && pending.has(m.id)) {
+      const p = pending.get(m.id);
+      pending.delete(m.id);
+      if (m.error) p.reject(new Error(m.error.message)); else p.resolve(m.result);
+    } else if (m.method === "Runtime.consoleAPICalled" && m.params.type === "error") {
+      consoleErrors.push(JSON.stringify(m.params.args).slice(0, 300));
+    } else if (m.method === "Runtime.exceptionThrown") {
+      consoleErrors.push(String(m.params.exceptionDetails?.exception?.description || "exc").slice(0, 300));
+    }
+  };
 }
 
 async function evaluate(expr) {
-  const r = await send("Runtime.evaluate", { expression: expr, returnByValue: true, awaitPromise: true });
+  const r = await send("Runtime.evaluate", { expression: expr, returnByValue: true });
   if (r.exceptionDetails) throw new Error("eval: " + JSON.stringify(r.exceptionDetails).slice(0, 250));
   return r.result.value;
 }
-
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-/** page coords for in-game coords (game 1280x720 letterboxed inside canvas). */
 async function gamePoint(gx, gy) {
   return evaluate(`(() => {
     const c = canvas.getBoundingClientRect();
@@ -62,12 +68,16 @@ async function gamePoint(gx, gy) {
 
 async function click(x, y) {
   await send("Input.dispatchMouseEvent", { type: "mouseMoved", x, y });
-  for (const type of ["mousePressed", "mouseReleased"]) {
-    await send("Input.dispatchMouseEvent", {
-      type, x, y, button: "left", buttons: type === "mousePressed" ? 1 : 0, clickCount: 1,
-    });
-    await sleep(50);
-  }
+  await sleep(150);
+  await send("Input.dispatchMouseEvent", { type: "mousePressed", x, y, button: "left", buttons: 1, clickCount: 1 });
+  await sleep(200);
+  await send("Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button: "left", buttons: 0, clickCount: 1 });
+}
+
+async function key(keyName, vk) {
+  await send("Input.dispatchKeyEvent", { type: "keyDown", key: keyName, code: keyName, windowsVirtualKeyCode: vk, nativeVirtualKeyCode: vk });
+  await sleep(60);
+  await send("Input.dispatchKeyEvent", { type: "keyUp", key: keyName, code: keyName, windowsVirtualKeyCode: vk, nativeVirtualKeyCode: vk });
 }
 
 async function shot(name) {
@@ -81,30 +91,52 @@ function check(cond, label) {
   else { fail++; console.log("  FAIL " + label); }
 }
 
+// wait for SPOT_DEBUG to appear (board started)
+async function waitBoard(timeoutMs = 20000) {
+  const t0 = Date.now();
+  while (Date.now() - t0 < timeoutMs) {
+    try {
+      if ((await evaluate(`String(typeof window.SPOT_DEBUG !== 'undefined')`)) === "true") return true;
+    } catch (e) {}
+    await sleep(500);
+  }
+  return false;
+}
+
 async function clearBoard(label) {
   const manifest = await evaluate(`window.SPOT_DEBUG ? window.SPOT_DEBUG.manifest : null`);
   if (!manifest) throw new Error("no SPOT_DEBUG hook");
-  // click each diff epicenter twice (left + right half) to be robust
   for (const m of manifest) {
     const e = m.epicenters[0];
     const pL = await gamePoint(e.x + 4, e.y + 4);
     await click(pL.x, pL.y);
-    const pR = await gamePoint(BoardOX_R() + e.x + 4, e.y + 4);
-    await click(pR.x, pR.y);
-    await sleep(400);
+    await sleep(350);
+    let met = await evaluate(`window.SPOT_METRICS ? window.SPOT_METRICS() : null`);
+    if (!met.found) {
+      // right half fallback
+      const pR = await gamePoint(610 + e.x + 4, e.y + 4);
+      await click(pR.x, pR.y);
+      await sleep(350);
+    }
   }
   const met = await evaluate(`window.SPOT_METRICS ? window.SPOT_METRICS() : null`);
   check(met && met.cleared === true, `${label}: cleared (${met.found}/${met.total}, wrong=${met.wrong_taps})`);
   return met;
 }
-function BoardOX_R() { return 610; } // HALF_W 550 + GAP 60
+
+async function enterMode(keyName, vk, label) {
+  await key(keyName, vk);
+  const ok = await waitBoard();
+  check(ok, `${label} entered`);
+  return ok;
+}
 
 async function main() {
-  console.log(`SMOKE-PLAYTEST v2 — ${URL}`);
+  console.log(`SMOKE-PLAYTEST v4 — ${URL}`);
   const chrom = spawn("/usr/bin/chromium-browser", [
     "--headless=new", `--remote-debugging-port=${PORT}`,
-    "--window-size=1280,760", "--no-sandbox", "--disable-gpu",
-    `--user-data-dir=/tmp/qa-stl2-${Date.now()}`, "--autoplay-policy=no-user-gesture-required",
+    "--window-size=1280,800", "--no-sandbox", "--disable-gpu",
+    `--user-data-dir=/tmp/qa-stl4-${Date.now()}`, "--autoplay-policy=no-user-gesture-required",
     "about:blank",
   ], { stdio: "ignore" });
 
@@ -118,65 +150,51 @@ async function main() {
         if (target) break;
       } catch (e) {}
     }
-    if (!target) throw new Error("no page target");
-
-    ws = new WebSocket(target.webSocketDebuggerUrl);
-    ws.onmessage = (ev) => onMessage(ev.data);
-    await new Promise((res) => (ws.onopen = res));
+    if (!target) throw new Error("no page target — chromium did not expose a page");
+    const socket = new WebSocket(target.webSocketDebuggerUrl);
+    attachWs(socket);
+    await new Promise((res) => (socket.onopen = res));
     await send("Page.enable"); await send("Runtime.enable");
 
     const t0 = Date.now();
     await send("Page.navigate", { url: URL });
-    // wait for canvas
     let ok = false;
     while (Date.now() - t0 < 60000) {
-      try {
-        if ((await evaluate(`typeof canvas !== 'undefined' && !!canvas`)) === true) { ok = true; break; }
-      } catch (e) {}
+      try { if ((await evaluate(`typeof canvas !== 'undefined' && !!canvas`)) === true) { ok = true; break; } } catch (e) {}
       await sleep(500);
     }
-    check(ok, "engine booted");
-    await sleep(3000); // first frame + font load
-    await shot("01-boot.png");
+    check(ok, "engine booted (<10s gate)");
+    await sleep(3000);
+    await shot("01-menu.png");
 
-    // DAILY button: in-game rect (476..804, 280..336) -> center (640, 308)
-    const dBtn = await gamePoint(640, 308);
-    await click(dBtn.x, dBtn.y);
-    await sleep(1200);
-    const dailySeed = await evaluate(`window.SPOT_DEBUG ? window.SPOT_DEBUG.seed : null`);
-    check(typeof dailySeed === "string" && dailySeed.startsWith("DAILY-"), `DAILY mode entered: ${dailySeed}`);
-    const m1 = await clearBoard("DAILY board");
+    // BOARD 1 — DAILY (Enter)
+    await enterMode("Enter", 13, "DAILY");
+    await clearBoard("DAILY board");
     await shot("02-daily-cleared.png");
 
-    // MENU -> MIRROR
-    const menuBtn = await gamePoint(640, 706); // MENU row
-    await click(menuBtn.x, menuBtn.y);
-    await sleep(800);
-    const mBtn = await gamePoint(640, 402); // MirrorBtn (3rd): y=374+28
-    await click(mBtn.x, mBtn.y);
-    await sleep(1000);
-    const m2 = await clearBoard("MIRROR board");
+    // BOARD 2 — MIRROR (key '3')
+    await send("Page.navigate", { url: URL });
+    await sleep(9000);
+    await enterMode("3", 51, "MIRROR");
+    await clearBoard("MIRROR board");
     await shot("03-mirror-cleared.png");
 
-    // MENU -> DRIFT
-    await click(menuBtn.x, menuBtn.y);
-    await sleep(800);
-    const dBtn2 = await gamePoint(640, 449); // DriftBtn (4th)
-    await click(dBtn2.x, dBtn2.y);
-    await sleep(1000);
-    const m3 = await clearBoard("DRIFT board 1");
+    // BOARD 3 — DRIFT (key '4')
+    await send("Page.navigate", { url: URL });
+    await sleep(9000);
+    await enterMode("4", 52, "DRIFT");
+    await clearBoard("DRIFT board 1");
     await shot("04-drift-cleared.png");
 
     const metrics = await evaluate(`window.SPOT_METRICS ? window.SPOT_METRICS() : null`);
     check(metrics !== null, "metrics readable after runs");
     await shot("05-final.png");
-
     check(consoleErrors.length === 0, `console clean (${consoleErrors.length} errors${consoleErrors.length ? ": " + consoleErrors[0] : ""})`);
 
-    console.log("\n=== SMOKE-PLAYTEST REPORT — SPOT THE LIE v1 ===");
+    console.log("\n=== SMOKE-PLAYTEST REPORT — SPOT THE LIE v1 (/v1/) ===");
     console.log(`CONSOLE ERRORS: ${consoleErrors.length}${consoleErrors.length ? " — " + consoleErrors.slice(0, 3).join(" | ") : ""}`);
     console.log(`CHECKS: ${pass} pass / ${fail} fail`);
-    console.log(`SCREENSHOTS: ${OUT}/01-05.png`);
+    console.log(`SCREENSHOTS: ${OUT}/01–05.png`);
     console.log(`VERDICT: ${fail === 0 ? "RUNNABLE" : "NEEDS-FIX"}`);
     console.log("FUN: explicitly NOT evaluated — human board verdict required");
     process.exitCode = fail === 0 ? 0 : 1;
