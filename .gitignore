@@ -1,3 +1,5 @@
-shots/
-probe.js
-*.png
+.godot/
+node_modules/
+__pycache__/
+build/
+*.tmp

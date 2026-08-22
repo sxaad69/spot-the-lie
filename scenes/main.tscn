@@ -1,0 +1,214 @@
+[gd_scene load_steps=5 format=3 uid="uid://stlmain000001"]
+
+[ext_resource type="Script" path="res://scripts/main.gd" id="1_main"]
+[ext_resource type="Script" path="res://scripts/board_renderer.gd" id="2_board"]
+[ext_resource type="Script" path="res://scripts/menu.gd" id="3_menu"]
+[ext_resource type="Script" path="res://scripts/game_audio.gd" id="4_audio"]
+
+[node name="Main" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+script = ExtResource("1_main")
+
+[node name="Background" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0.082, 0.09, 0.118, 1)
+
+[node name="Title" type="Label" parent="."]
+layout_mode = 1
+offset_left = 20.0
+offset_top = 8.0
+offset_right = 1260.0
+offset_bottom = 40.0
+theme_override_font_sizes/font_size = 22
+text = "SPOT THE LIE — DAILY DIFF"
+horizontal_alignment = 1
+
+[node name="Board" type="Node2D" parent="."]
+script = ExtResource("2_board")
+
+[node name="Hud" type="HBoxContainer" parent="."]
+layout_mode = 1
+offset_left = 20.0
+offset_top = 648.0
+offset_right = 1260.0
+offset_bottom = 680.0
+theme_override_constants/separation = 14
+alignment = 1
+
+[node name="SeedChip" type="PanelContainer" parent="Hud"]
+layout_mode = 2
+
+[node name="SeedVal" type="Label" parent="Hud/SeedChip"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 15
+text = "SEED --------"
+
+[node name="ModeChip" type="PanelContainer" parent="Hud"]
+layout_mode = 2
+
+[node name="ModeVal" type="Label" parent="Hud/ModeChip"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 15
+text = "FREE"
+
+[node name="ScoreChip" type="PanelContainer" parent="Hud"]
+layout_mode = 2
+
+[node name="ScoreVal" type="Label" parent="Hud/ScoreChip"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 15
+text = "SCORE 0"
+
+[node name="MultChip" type="PanelContainer" parent="Hud"]
+layout_mode = 2
+
+[node name="MultVal" type="Label" parent="Hud/MultChip"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 15
+text = "MULT 3.00×"
+
+[node name="MultBarWrap" type="ColorRect" parent="Hud"]
+custom_minimum_size = Vector2(152, 12)
+layout_mode = 2
+color = Color(0.063, 0.075, 0.102, 1)
+
+[node name="MultBar" type="ColorRect" parent="Hud/MultBarWrap"]
+layout_mode = 0
+offset_right = 150.0
+offset_bottom = 10.0
+color = Color(0.878, 0.659, 0.247, 1)
+
+[node name="StreakChip" type="PanelContainer" parent="Hud"]
+layout_mode = 2
+
+[node name="StreakRow" type="HBoxContainer" parent="Hud/StreakChip"]
+layout_mode = 2
+
+[node name="StreakLabel" type="Label" parent="Hud/StreakChip/StreakRow"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 15
+text = "STREAK "
+
+[node name="StreakVal" type="Label" parent="Hud/StreakChip/StreakRow"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 15
+text = "0"
+
+[node name="GuardTag" type="Label" parent="Hud/StreakChip/StreakRow"]
+visible = false
+layout_mode = 2
+theme_override_colors/font_color = Color(0.34, 0.79, 0.54, 1)
+theme_override_font_sizes/font_size = 13
+text = " CHAIN GUARD"
+
+[node name="Dots" type="Label" parent="Hud"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.34, 0.79, 0.54, 1)
+theme_override_font_sizes/font_size = 16
+text = "○○○○○"
+
+[node name="Actions" type="HBoxContainer" parent="."]
+layout_mode = 1
+offset_left = 340.0
+offset_top = 686.0
+offset_right = 940.0
+offset_bottom = 718.0
+theme_override_constants/separation = 16
+alignment = 1
+
+[node name="BtnNew" type="Button" parent="Actions"]
+layout_mode = 2
+text = "NEW SEED"
+
+[node name="BtnReveal" type="Button" parent="Actions"]
+layout_mode = 2
+tooltip_text = "Rewarded placement: watch an ad to reveal one difference"
+text = "REVEAL ONE ▶"
+
+[node name="BtnMenu" type="Button" parent="Actions"]
+layout_mode = 2
+text = "MENU"
+
+[node name="Banner" type="PanelContainer" parent="."]
+visible = false
+layout_mode = 1
+offset_left = 340.0
+offset_top = 250.0
+offset_right = 940.0
+offset_bottom = 360.0
+
+[node name="BannerLabel" type="Label" parent="Banner"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 19
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 2
+
+[node name="Audio" type="Node" parent="."]
+script = ExtResource("4_audio")
+
+[node name="Menu" type="Control" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+script = ExtResource("3_menu")
+
+[node name="Center" type="CenterContainer" parent="Menu"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="Panel" type="PanelContainer" parent="Menu/Center"]
+layout_mode = 2
+
+[node name="VBox" type="VBoxContainer" parent="Menu/Center/Panel"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="GameTitle" type="Label" parent="Menu/Center/Panel/VBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 30
+text = "SPOT THE LIE"
+horizontal_alignment = 1
+
+[node name="Subtitle" type="Label" parent="Menu/Center/Panel/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.541, 0.576, 0.651, 1)
+theme_override_font_sizes/font_size = 14
+text = "procedural scene pair · a new puzzle every day"
+horizontal_alignment = 1
+
+[node name="Spacer" type="Control" parent="Menu/Center/Panel/VBox"]
+custom_minimum_size = Vector2(0, 10)
+layout_mode = 2
+
+[node name="DailyBtn" type="Button" parent="Menu/Center/Panel/VBox"]
+layout_mode = 2
+text = "▶ DAILY DIFF — today's worldwide board"
+
+[node name="FreeBtn" type="Button" parent="Menu/Center/Panel/VBox"]
+layout_mode = 2
+text = "FREE PLAY — endless random seeds"
+
+[node name="MirrorBtn" type="Button" parent="Menu/Center/Panel/VBox"]
+layout_mode = 2
+text = "MIRROR PAIRS — the lie is flipped"
+
+[node name="DriftBtn" type="Button" parent="Menu/Center/Panel/VBox"]
+layout_mode = 2
+text = "DRIFT — 5 linked boards, ramping decoys"
+
+[node name="Footer" type="Label" parent="Menu/Center/Panel/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.42, 0.45, 0.51, 1)
+theme_override_font_sizes/font_size = 11
+text = "no timer can end your run · wrong taps only cost multiplier"
+horizontal_alignment = 1

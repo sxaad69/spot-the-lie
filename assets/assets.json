@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "project": "SPOT THE LIE — Daily Diff",
+  "art_direction_brief": "Flat-noir style-lock: muted desaturated blue-grey scenes with sparse warm accents, clean flat shapes, children's-book simplicity, rich distinct objects for diff-hiding. Generated scenes ONLY.",
+  "legal_pin": "AI-generated via pollinations.ai (keyless). Zero licensed/stock photos in the pipeline, ever.",
+  "normalization": "tools/normalize_board.py v2 (lighter touch): crop-to-fill to 576x864 aspect, mild denoise blur, desaturate to 55% + slight blue-cool + shadow lift for readability. No palette lock, no edge pass (v1 crushed detail — reverted per DECISIONS.md #10).",
+  "assets": [
+    {"id": "room-study", "role": "base painting", "path": "assets/base/room-study.webp", "source": {"kind": "ai-generated", "url_or_tool": "pollinations.ai", "seed": 1000}, "license": "generated-original"},
+    {"id": "room-kitchen", "role": "base painting", "path": "assets/base/room-kitchen.webp", "source": {"kind": "ai-generated", "url_or_tool": "pollinations.ai", "seed": 1037}, "license": "generated-original"},
+    {"id": "room-attic", "role": "base painting", "path": "assets/base/room-attic.webp", "source": {"kind": "ai-generated", "url_or_tool": "pollinations.ai", "seed": 1074}, "license": "generated-original"},
+    {"id": "room-bedroom", "role": "base painting", "path": "assets/base/room-bedroom.webp", "source": {"kind": "ai-generated", "url_or_tool": "pollinations.ai", "seed": 1111}, "license": "generated-original"},
+    {"id": "market-street", "role": "base painting", "path": "assets/base/market-street.webp", "source": {"kind": "ai-generated", "url_or_tool": "pollinations.ai", "seed": 1148}, "license": "generated-original"},
+    {"id": "market-fish", "role": "base painting", "path": "assets/base/market-fish.webp", "source": {"kind": "ai-generated", "url_or_tool": "pollinations.ai", "seed": 1185}, "license": "generated-original"},
+    {"id": "market-spice", "role": "base painting", "path": "assets/base/market-spice.webp", "source": {"kind": "ai-generated", "url_or_tool": "pollinations.ai", "seed": 1222}, "license": "generated-original"},
+    {"id": "street-corner", "role": "base painting", "path": "assets/base/street-corner.webp", "source": {"kind": "ai-generated", "url_or_tool": "pollinations.ai", "seed": 1259}, "license": "generated-original"},
+    {"id": "street-alley", "role": "base painting", "path": "assets/base/street-alley.webp", "source": {"kind": "ai-generated", "url_or_tool": "pollinations.ai", "seed": 1296}, "license": "generated-original"},
+    {"id": "street-station", "role": "base painting", "path": "assets/base/street-station.webp", "source": {"kind": "ai-generated", "url_or_tool": "pollinations.ai", "seed": 1333}, "license": "generated-original"},
+    {"id": "space-station", "role": "base painting", "path": "assets/base/space-station.webp", "source": {"kind": "ai-generated", "url_or_tool": "pollinations.ai", "seed": 1370}, "license": "generated-original"},
+    {"id": "space-lab", "role": "base painting", "path": "assets/base/space-lab.webp", "source": {"kind": "ai-generated", "url_or_tool": "pollinations.ai", "seed": 1407}, "license": "generated-original"}
+  ]
+}

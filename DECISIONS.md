@@ -1,19 +1,11 @@
-# DECISIONS.md — t_0915877f SPOT THE LIE W1 feeler (append-only)
+# DECISIONS.md — t_9948e882 SPOT THE LIE FULL BUILD (append-only)
 
-1. Repo = this workspace; single-file `index.html` at root so GH Pages serves it at repo URL with zero config.
-2. Title locked: "SPOT THE LIE — Daily Diff" (C1: procedural/DAILY marker readable at thumbnail+title).
-3. RNG: mulberry32 seeded PRNG; scene-graph generated from seed, rendered twice — left half pristine, right half mutated. Generator IS the answer key (manifest printed to console).
-4. Mutation classes: add / remove / flip / swap-position / resize. Recolor deliberately NOT implemented as a class at all → accessibility pin satisfied by construction, not by sampling discipline.
-5. Salience floor ACTIVE in greybox per C3: each mutation must move ≥FLOOR pixels of shape boundary (min over affected shapes' edge travel) AND land ≥MIN_CLEAR px away from every other mutation's epicenter (anti-cluster); reject-and-regenerate below-floor mutations, max 40 attempts then re-seed scene. Floor values logged per accepted mutation.
-6. N=5 diffs at feeler scale (spec). Scene = ~14 greybox shapes (rects/circles/tri-ish rects) on muted ground, decoys by density.
-7. Tap-diff: correct tap rings green + scores (base 100 x multiplier, multiplier decays with elapsed time — scoring-not-survival, NO hard-fail clock anywhere); wrong tap shakes + costs 50% of current multiplier only, never time. Streak protection: first wrong tap after a streak ≥2 does not break the chain ("CHAIN GUARD" tag shown).
-8. Seed string visible in HUD strip from first paint + "NEW SEED" reroll button (daily-identity groundwork; also lets pulse testers sample across seeds fast). Seed accepts URL ?seed= for shareable daily-style runs.
-9. Diff manifest printed to console on generate = answer key (spec mandate).
-10. No tutorial/art/sound/menu per spec scope cut; one WebAudio debug blip on correct tap only (debug tone allowed).
-
---- run 96 (verification + delivery; prior run 93 built the game but exited without a terminal call) ---
-
-11. Run 93's index.html passed static spec audit on re-read; run 96 VERIFIED it instead of rebuilding — no code changes to the game were needed.
-12. Verification stack is dependency-free (no Playwright MCP / pip playwright on box): (a) `node harness.js` — Node VM extracts the generator and stress-tests 2000 seeds (class legality incl. recolor-absence, floor integrity, 66px anti-cluster, determinism, variety: ALL PASS); (b) `node playtest.js` — raw-CDP over Node22 native WebSocket driving a DEDICATED headless chromium (skill pitfall #9): boot/load/wrong-tap/5-tap-clear/reroll = 15/15 PASS locally, then re-run against the LIVE Pages URL = 15/15 PASS. Gotcha: CDP target[0] was the snap-extension background_page, not the tab — select type==="page".
-13. Deploy: sxaad69/spot-the-lie (public, master @ root, legacy Pages source). curl-verified https://sxaad69.github.io/spot-the-lie/ = HTTP 200 + exact title before any summary cited it (rule 14); pages status=built on first poll.
-14. One live-run FAIL was a HARNESS bug (double ?seed= when STL_URL already carried a query string), not a game defect — fixed in playtest.js, disclosed here to keep the evidence honest. QA tools committed to the repo because README cites them; probe.js stays local (one-off debug).
+1. Build repo = same GitHub repo as the feeler (sxaad69/spot-the-lie), branch `v1-full-build`; feeler files stay on master untouched. Godot 4.3 project at repo root (project.godot), web export to build/web/ (gitignored per pinned rule 10 — never commit wasm/pck).
+2. Generator is a PORT of the proven feeler generator (master index.html, harness-verified over 2000 seeds): mulberry32 PRNG, scene-graph rendered twice, mutation classes {add, remove, flip, swap-position, resize} only — recolor not implemented at all (accessibility pin by construction). Salience floor + anti-cluster spacing carried verbatim; RESIZE capped ~1 per board (pulse caveat: eye misses resizes).
+3. Art pipeline = the set-piece-master hybrid: pollinations.ai keyless AI generation (LEGAL PIN: AI-generated scenes ONLY), fixed seeds, flat-noir style-lock prompt family, deterministic normalize script (palette quantization + outline). 12 base paintings across room/market/street/space themes. Provenance in assets/assets.json.
+4. C2 timer: multiplier bar drains 100%→0% over the board's soft window (~90s); wrong tap halves current multiplier; CHAIN GUARD streak protection on first miss after streak>=2; NO hard-fail clock anywhere — running out of multiplier just means base-score taps until clear.
+5. Modes: DAILY (UTC date-derived seed shown as e.g. "DAILY 2026-08-22 #742", everyone worldwide gets same boards that day), MIRROR PAIRS (right half is a mirrored render of left — diffs must respect mirror axis), DRIFT-SURVIVAL-lite renamed "DRIFT" (consecutive boards share seed lineage, decoy density ramps; still no hard fail — drift ends a RUN by choice-gate, not clock). Mode select on title screen.
+6. Audio: jsfxr-style procedural WebAudio synthesized offline to OGG via tools/gen_sfx.js port (spot-ding, error-buzz, streak-chime, clear-sting) + one ambient loop (generated-original). Files land assets/audio/.
+7. Rewarded placement: "REVEAL ONE" button (watch-ad stub) rings one unfound diff — canonical benchmark-backed placement. Stub shows a 3s fake-ad overlay locally; integration point documented for portal SDK.
+8. C1 identity: page <title> and in-game title carry "SPOT THE LIE — Daily Diff"; seed string visible in HUD from first paint; thumbnail (index.png export icon) carries DAILY marker text.
+9. Export reuses set-piece-master custom 2D-only web template (5.07MB gz vs 8MB stock) — proven <8s interactive on fast-4G. Pages deploy to https://sxaad69.github.io/spot-the-lie/ replacing the greybox (greybox preserved on master branch).
