@@ -150,6 +150,8 @@ func _gui_input(_ev: InputEvent) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if menu.visible:
+		return  # menu is up — never let board taps through
 	if cleared or state.is_empty():
 		return
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:

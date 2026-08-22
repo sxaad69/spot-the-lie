@@ -136,6 +136,11 @@ script = ExtResource("4_audio")
 script = ExtResource("3_menu")
 
 [node name="Center" type="CenterContainer" parent="Menu"]
+layout_mode = 0
+offset_left = 0.0
+offset_top = 0.0
+offset_right = 1280.0
+offset_bottom = 720.0
 
 [node name="Panel" type="PanelContainer" parent="Menu/Center"]
 
